@@ -7,13 +7,14 @@ mod input;
 mod network;
 mod protocol;
 mod server;
+mod windows_setup;
 
 use clap::Parser;
 use config::Config;
 use network::{choose_default_ip, detect_lan_interfaces, render_ascii_qr};
 use server::{run_servers, AppState};
 use std::net::Ipv4Addr;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(name = "airpad", version, about = "iPhone Wi-Fi Wireless Mouse & Trackpad Server for Windows")]
@@ -69,6 +70,23 @@ fn main() {
     if cli.rotate_token {
         cfg.pairing_token = config::generate_token();
         let _ = cfg.save();
+    }
+
+    let https_port = cfg.https_port;
+    let http_port = cfg.http_onboarding_port;
+    let should_prompt_fw = !cfg.firewall_prompted;
+    if should_prompt_fw {
+        cfg.firewall_prompted = true;
+        let _ = cfg.save();
+        std::thread::spawn(move || {
+            if !windows_setup::is_firewall_configured(https_port, http_port) {
+                match windows_setup::ensure_firewall_rules(https_port, http_port) {
+                    Ok(true) => info!("Configured Windows Firewall rules for ports {http_port}/{https_port}"),
+                    Ok(false) => {}
+                    Err(e) => warn!("Skipping Windows Firewall auto-setup: {e}"),
+                }
+            }
+        });
     }
 
     let ifaces = detect_lan_interfaces();

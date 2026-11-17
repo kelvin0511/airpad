@@ -191,7 +191,7 @@ impl InputBackend for WindowsInputBackend {
                 continue;
             }
             let mut buf = [0u16; 2];
-            for &unit in ch.encode_utf16(&mut buf) {
+            for unit in ch.encode_utf16(&mut buf).iter().copied() {
                 batch.push(Self::key_input(0, unit, KEYEVENTF_UNICODE));
                 batch.push(Self::key_input(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP));
             }

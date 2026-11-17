@@ -1,8 +1,8 @@
 use crate::network::{choose_default_ip, detect_lan_interfaces, qr_matrix, NetworkInterfaceInfo};
 use crate::server::{format_duration, AppState};
+use crate::windows_setup;
 use eframe::egui;
 use std::net::Ipv4Addr;
-#[cfg(windows)]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,8 +19,8 @@ enum QrTab {
 pub fn run_gui(state: Arc<AppState>) -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([430.0, 670.0])
-            .with_min_inner_size([380.0, 580.0])
+            .with_inner_size([430.0, 700.0])
+            .with_min_inner_size([380.0, 600.0])
             .with_title("AirPad — Wireless iPhone Trackpad"),
         ..Default::default()
     };
@@ -44,6 +44,9 @@ struct AirPadWindow {
     cached_qr_url: String,
     cached_qr: Option<(usize, Vec<bool>)>,
     copied_flash: f64,
+    firewall_ok: Arc<AtomicBool>,
+    firewall_busy: Arc<AtomicBool>,
+    autostart: bool,
     #[cfg(windows)]
     should_quit: Arc<AtomicBool>,
     #[cfg(windows)]
@@ -53,8 +56,22 @@ struct AirPadWindow {
 impl AirPadWindow {
     fn new(state: Arc<AppState>) -> Self {
         let interfaces = detect_lan_interfaces();
-        let pref = state.config.read().unwrap().preferred_ip.clone();
+        let (pref, https_port, http_port) = {
+            let cfg = state.config.read().unwrap();
+            (cfg.preferred_ip.clone(), cfg.https_port, cfg.http_onboarding_port)
+        };
         let selected_ip = choose_default_ip(&interfaces, pref.as_deref());
+        let firewall_ok = Arc::new(AtomicBool::new(false));
+        let firewall_busy = Arc::new(AtomicBool::new(false));
+
+        let fw_check = firewall_ok.clone();
+        std::thread::spawn(move || {
+            let ok = windows_setup::is_firewall_configured(https_port, http_port);
+            fw_check.store(ok, Ordering::SeqCst);
+        });
+
+        let autostart = windows_setup::is_autostart_enabled();
+
         #[cfg(windows)]
         let should_quit = Arc::new(AtomicBool::new(false));
 
@@ -69,6 +86,9 @@ impl AirPadWindow {
             cached_qr_url: String::new(),
             cached_qr: None,
             copied_flash: 0.0,
+            firewall_ok,
+            firewall_busy,
+            autostart,
             #[cfg(windows)]
             should_quit,
             #[cfg(windows)]
@@ -270,6 +290,43 @@ impl eframe::App for AirPadWindow {
             {
                 self.state.set_scroll_speed(scroll);
             }
+
+            ui.separator();
+
+            // Environment & Startup
+            ui.horizontal(|ui| {
+                let fw_ok = self.firewall_ok.load(Ordering::SeqCst);
+                let fw_busy = self.firewall_busy.load(Ordering::SeqCst);
+                if fw_ok {
+                    ui.colored_label(egui::Color32::from_rgb(34, 197, 94), "Firewall: Ready");
+                } else if fw_busy {
+                    ui.colored_label(egui::Color32::from_rgb(245, 158, 11), "Configuring Firewall…");
+                } else if ui.button("Allow in Windows Firewall").clicked() {
+                    let (https_port, http_port) = {
+                        let cfg = self.state.config.read().unwrap();
+                        (cfg.https_port, cfg.http_onboarding_port)
+                    };
+                    let ok_flag = self.firewall_ok.clone();
+                    let busy_flag = self.firewall_busy.clone();
+                    busy_flag.store(true, Ordering::SeqCst);
+                    std::thread::spawn(move || {
+                        let _ = windows_setup::ensure_firewall_rules(https_port, http_port);
+                        ok_flag.store(
+                            windows_setup::is_firewall_configured(https_port, http_port),
+                            Ordering::SeqCst,
+                        );
+                        busy_flag.store(false, Ordering::SeqCst);
+                    });
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.checkbox(&mut self.autostart, "Start with Windows").changed() {
+                        if windows_setup::set_autostart(self.autostart).is_err() {
+                            self.autostart = windows_setup::is_autostart_enabled();
+                        }
+                    }
+                });
+            });
 
             #[cfg(windows)]
             ui.label(

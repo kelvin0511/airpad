@@ -12,6 +12,7 @@ pub struct Config {
     pub sensitivity: f32,
     pub scroll_speed: f32,
     pub preferred_ip: Option<String>,
+    pub firewall_prompted: bool,
 }
 
 impl Default for Config {
@@ -23,6 +24,7 @@ impl Default for Config {
             sensitivity: 1.0,
             scroll_speed: 1.0,
             preferred_ip: None,
+            firewall_prompted: false,
         }
     }
 }
