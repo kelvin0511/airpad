@@ -558,6 +558,14 @@ mod tests {
         assert_eq!(kin_res.status(), 200);
         assert!(kin_res.text().await.unwrap().contains("computeAirDelta"));
 
+        let opt_res = client
+            .get(format!("http://{web_addr}/optical-flow.js"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(opt_res.status(), 200);
+        assert!(opt_res.text().await.unwrap().contains("estimateOpticalShift"));
+
         let mc_res = client
             .get(format!("http://{http_addr}/ca.mobileconfig"))
             .send()

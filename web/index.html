@@ -24,7 +24,8 @@
 
       <div class="mode-tabs" role="tablist" aria-label="Pointer Mode">
         <button id="btnModeTrackpad" class="mode-tab active" type="button" role="tab" aria-selected="true">Trackpad</button>
-        <button id="btnModeAir" class="mode-tab" type="button" role="tab" aria-selected="false">Air-Mouse</button>
+        <button id="btnModeAir" class="mode-tab" type="button" role="tab" aria-selected="false">Air</button>
+        <button id="btnModeOptical" class="mode-tab" type="button" role="tab" aria-selected="false">Optical</button>
       </div>
 
       <div class="top-actions">
@@ -116,6 +117,35 @@
         </div>
       </section>
 
+      <!-- Optical Puck Panel -->
+      <section id="opticalPanel" class="surface-panel hidden">
+        <div class="air-container">
+          <div id="opticalPermBanner" class="motion-banner">
+            <p class="motion-banner-title">Camera Optical Mouse (Experimental)</p>
+            <p class="motion-banner-desc">Tracks textured surfaces via rear camera (~2–6 cm macro/puck spacer) or front camera facing the ceiling.</p>
+            <button id="btnEnableOptical" class="primary-btn" type="button">Start Optical Camera</button>
+          </div>
+
+          <div class="optical-telemetry">
+            <video id="opticalVideo" class="hidden-video" playsinline muted autoplay></video>
+            <div class="optical-preview-wrap">
+              <canvas id="opticalPreview" class="optical-preview" width="160" height="120"></canvas>
+            </div>
+            <div id="opticalStatusLabel" class="air-status-label">Camera Stopped</div>
+            <div class="optical-controls">
+              <button id="btnOpticalCameraFlip" class="chip-btn" type="button">Camera: Rear</button>
+              <button id="btnOpticalTorch" class="chip-btn" type="button">Torch: Off</button>
+            </div>
+            <div class="air-hint">Camera stops automatically when switching tabs to save battery</div>
+          </div>
+
+          <button id="btnOpticalClutch" class="air-clutch-pad" type="button">
+            <span class="clutch-title">HOLD TO LIFT MOUSE</span>
+            <span class="clutch-sub">Pause tracking while repositioning phone · Hold Left below to drag</span>
+          </button>
+        </div>
+      </section>
+
       <!-- Pause Overlay -->
       <div id="pausedOverlay" class="paused-overlay hidden">
         <div class="paused-card">
@@ -173,6 +203,14 @@
             <input id="rngAirSens" type="range" min="0.4" max="3.0" step="0.1" value="1.2" />
           </label>
 
+          <label class="setting-row">
+            <div class="setting-label">
+              <span>Optical Puck Sensitivity</span>
+              <span id="valOpticalSens">1.4x</span>
+            </div>
+            <input id="rngOpticalSens" type="range" min="0.4" max="3.5" step="0.1" value="1.4" />
+          </label>
+
           <label class="setting-toggle">
             <span>Natural Scrolling</span>
             <input id="chkNaturalScroll" type="checkbox" checked />
@@ -191,6 +229,16 @@
           <label class="setting-toggle">
             <span>Invert Air-Mouse Y Axis</span>
             <input id="chkInvertAirY" type="checkbox" />
+          </label>
+
+          <label class="setting-toggle">
+            <span>Invert Optical X Axis</span>
+            <input id="chkInvertOpticalX" type="checkbox" />
+          </label>
+
+          <label class="setting-toggle">
+            <span>Invert Optical Y Axis</span>
+            <input id="chkInvertOpticalY" type="checkbox" />
           </label>
 
           <label class="setting-toggle">

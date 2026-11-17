@@ -5,6 +5,15 @@ import {
   resetAirMotion,
   updateGravityUp,
 } from './air-kinematics.js';
+import {
+  createOpticalState,
+  estimateOpticalShift,
+  FLOW_HEIGHT,
+  FLOW_WIDTH,
+  opticalShiftToCursorDelta,
+  resetOpticalState,
+  rgbaToGrayscale,
+} from './optical-flow.js';
 
 const OP = {
   MOVE: 0x01,
@@ -28,10 +37,13 @@ const defaultSettings = {
   trackpadSens: 1.3,
   scrollSpeed: 1.0,
   airSens: 1.2,
+  opticalSens: 1.4,
   naturalScroll: true,
   tapClick: true,
   invertAirX: false,
   invertAirY: false,
+  invertOpticalX: false,
+  invertOpticalY: false,
   soundClick: false,
 };
 
@@ -76,8 +88,10 @@ const latencyText = document.getElementById('latencyText');
 
 const btnModeTrackpad = document.getElementById('btnModeTrackpad');
 const btnModeAir = document.getElementById('btnModeAir');
+const btnModeOptical = document.getElementById('btnModeOptical');
 const trackpadPanel = document.getElementById('trackpadPanel');
 const airPanel = document.getElementById('airPanel');
+const opticalPanel = document.getElementById('opticalPanel');
 
 const trackpadSurface = document.getElementById('trackpadSurface');
 const touchRipples = document.getElementById('touchRipples');
@@ -90,6 +104,15 @@ const btnAirClutch = document.getElementById('btnAirClutch');
 const airCrosshair = document.getElementById('airCrosshair');
 const airDot = document.getElementById('airDot');
 const airStatusLabel = document.getElementById('airStatusLabel');
+
+const opticalPermBanner = document.getElementById('opticalPermBanner');
+const btnEnableOptical = document.getElementById('btnEnableOptical');
+const opticalVideo = document.getElementById('opticalVideo');
+const opticalPreview = document.getElementById('opticalPreview');
+const opticalStatusLabel = document.getElementById('opticalStatusLabel');
+const btnOpticalCameraFlip = document.getElementById('btnOpticalCameraFlip');
+const btnOpticalTorch = document.getElementById('btnOpticalTorch');
+const btnOpticalClutch = document.getElementById('btnOpticalClutch');
 
 const btnKeyboard = document.getElementById('btnKeyboard');
 const keyboardBar = document.getElementById('keyboardBar');
@@ -112,10 +135,14 @@ const rngScrollSpeed = document.getElementById('rngScrollSpeed');
 const valScrollSpeed = document.getElementById('valScrollSpeed');
 const rngAirSens = document.getElementById('rngAirSens');
 const valAirSens = document.getElementById('valAirSens');
+const rngOpticalSens = document.getElementById('rngOpticalSens');
+const valOpticalSens = document.getElementById('valOpticalSens');
 const chkNaturalScroll = document.getElementById('chkNaturalScroll');
 const chkTapClick = document.getElementById('chkTapClick');
 const chkInvertAirX = document.getElementById('chkInvertAirX');
 const chkInvertAirY = document.getElementById('chkInvertAirY');
+const chkInvertOpticalX = document.getElementById('chkInvertOpticalX');
+const chkInvertOpticalY = document.getElementById('chkInvertOpticalY');
 const chkSoundClick = document.getElementById('chkSoundClick');
 const btnReleaseAll = document.getElementById('btnReleaseAll');
 
@@ -166,6 +193,8 @@ async function requestWakeLock() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     requestWakeLock();
+  } else {
+    stopOpticalCamera();
   }
 });
 
@@ -175,7 +204,7 @@ let reconnectTimer = null;
 let pingTimer = null;
 let reconnectAttempt = 0;
 let serverPaused = false;
-let currentMode = 'trackpad'; // 'trackpad' | 'air'
+let currentMode = 'trackpad'; // 'trackpad' | 'air' | 'optical'
 
 function setStatus(state, label) {
   statusPill.dataset.state = state;
@@ -367,26 +396,38 @@ btnRetryConnect.addEventListener('click', () => {
 function setMode(mode) {
   currentMode = mode;
   const isTrackpad = mode === 'trackpad';
+  const isAir = mode === 'air';
+  const isOptical = mode === 'optical';
+
   btnModeTrackpad.classList.toggle('active', isTrackpad);
   btnModeTrackpad.setAttribute('aria-selected', String(isTrackpad));
-  btnModeAir.classList.toggle('active', !isTrackpad);
-  btnModeAir.setAttribute('aria-selected', String(!isTrackpad));
+  btnModeAir.classList.toggle('active', isAir);
+  btnModeAir.setAttribute('aria-selected', String(isAir));
+  btnModeOptical.classList.toggle('active', isOptical);
+  btnModeOptical.setAttribute('aria-selected', String(isOptical));
 
   trackpadPanel.classList.toggle('active', isTrackpad);
   trackpadPanel.classList.toggle('hidden', !isTrackpad);
-  airPanel.classList.toggle('active', !isTrackpad);
-  airPanel.classList.toggle('hidden', isTrackpad);
+  airPanel.classList.toggle('active', isAir);
+  airPanel.classList.toggle('hidden', !isAir);
+  opticalPanel.classList.toggle('active', isOptical);
+  opticalPanel.classList.toggle('hidden', !isOptical);
 
   sendReleaseAll();
   lastMotionTs = 0;
-  resetAirMotion(airState, !isTrackpad);
-  if (!isTrackpad) {
+  resetAirMotion(airState, isAir);
+
+  if (!isOptical) {
+    stopOpticalCamera();
+  }
+  if (isAir) {
     setupMotionSensors();
   }
 }
 
 btnModeTrackpad.addEventListener('click', () => setMode('trackpad'));
 btnModeAir.addEventListener('click', () => setMode('air'));
+btnModeOptical.addEventListener('click', () => setMode('optical'));
 
 // Trackpad Multi-Touch State Machine
 const activeTouches = new Map();
@@ -726,6 +767,256 @@ const releaseClutch = (e) => {
 btnAirClutch.addEventListener('pointerup', releaseClutch);
 btnAirClutch.addEventListener('pointercancel', releaseClutch);
 
+// Camera Optical Puck Mode
+const opticalState = createOpticalState();
+const flowCanvas = document.createElement('canvas');
+flowCanvas.width = FLOW_WIDTH;
+flowCanvas.height = FLOW_HEIGHT;
+const flowCtx = flowCanvas.getContext('2d', { willReadFrequently: true });
+const previewCtx = opticalPreview ? opticalPreview.getContext('2d') : null;
+
+let opticalStream = null;
+let opticalRafId = 0;
+let opticalFacingMode = 'environment'; // 'environment' (rear) | 'user' (front)
+let opticalTorchOn = false;
+let opticalClutchHeld = false;
+let opticalTorchSupported = false;
+
+function updateOpticalButtons() {
+  btnOpticalCameraFlip.textContent = opticalFacingMode === 'environment'
+    ? 'Camera: Rear'
+    : 'Camera: Front';
+  btnOpticalTorch.textContent = opticalTorchOn ? 'Torch: On' : 'Torch: Off';
+  btnOpticalTorch.classList.toggle('active', opticalTorchOn);
+  btnOpticalTorch.disabled = !opticalStream || !opticalTorchSupported;
+}
+
+function stopOpticalCamera() {
+  if (opticalRafId) {
+    cancelAnimationFrame(opticalRafId);
+    opticalRafId = 0;
+  }
+  if (opticalStream) {
+    for (const track of opticalStream.getTracks()) {
+      try {
+        track.stop();
+      } catch {
+        // ignore stop errors
+      }
+    }
+    opticalStream = null;
+  }
+  if (opticalVideo) {
+    opticalVideo.srcObject = null;
+  }
+  opticalTorchOn = false;
+  opticalTorchSupported = false;
+  resetOpticalState(opticalState, true);
+  if (opticalStatusLabel) {
+    opticalStatusLabel.textContent = 'Camera Stopped';
+  }
+  if (opticalPermBanner) {
+    opticalPermBanner.classList.remove('hidden');
+  }
+  updateOpticalButtons();
+}
+
+async function applyTorchConstraint(enabled) {
+  if (!opticalStream) return false;
+  const track = opticalStream.getVideoTracks()[0];
+  if (!track || typeof track.applyConstraints !== 'function') return false;
+  try {
+    await track.applyConstraints({ advanced: [{ torch: enabled }] });
+    opticalTorchOn = enabled;
+    updateOpticalButtons();
+    return true;
+  } catch {
+    opticalTorchOn = false;
+    opticalTorchSupported = false;
+    updateOpticalButtons();
+    return false;
+  }
+}
+
+function drawOpticalPreview(sx, sy, sw, sh, flowRes, paused) {
+  if (!previewCtx || !opticalPreview) return;
+  const pw = opticalPreview.width;
+  const ph = opticalPreview.height;
+
+  previewCtx.save();
+  previewCtx.filter = 'grayscale(100%) contrast(120%)';
+  previewCtx.drawImage(opticalVideo, sx, sy, sw, sh, 0, 0, pw, ph);
+  previewCtx.restore();
+
+  // Center tracking box
+  previewCtx.strokeStyle = paused
+    ? 'rgba(245, 158, 11, 0.85)'
+    : flowRes && flowRes.reason === 'ok'
+      ? 'rgba(34, 197, 94, 0.85)'
+      : 'rgba(239, 68, 68, 0.8)';
+  previewCtx.lineWidth = 1.5;
+  previewCtx.strokeRect(pw * 0.24, ph * 0.24, pw * 0.52, ph * 0.52);
+
+  // Motion vector arrow
+  if (!paused && flowRes && flowRes.reason === 'ok') {
+    const cx = pw * 0.5;
+    const cy = ph * 0.5;
+    const vx = Math.max(-36, Math.min(36, -flowRes.shiftX * 6));
+    const vy = Math.max(-28, Math.min(28, -flowRes.shiftY * 6));
+    previewCtx.strokeStyle = '#60a5fa';
+    previewCtx.lineWidth = 2.5;
+    previewCtx.beginPath();
+    previewCtx.moveTo(cx, cy);
+    previewCtx.lineTo(cx + vx, cy + vy);
+    previewCtx.stroke();
+  }
+}
+
+function opticalFrameLoop() {
+  if (currentMode !== 'optical' || !opticalStream) {
+    opticalRafId = 0;
+    return;
+  }
+
+  if (opticalVideo.readyState >= 2 && opticalVideo.videoWidth > 0 && opticalVideo.videoHeight > 0 && flowCtx) {
+    const vw = opticalVideo.videoWidth;
+    const vh = opticalVideo.videoHeight;
+    const targetAspect = FLOW_WIDTH / FLOW_HEIGHT;
+    let sw = vw;
+    let sh = vh;
+    if (vw / vh > targetAspect) {
+      sw = Math.floor(vh * targetAspect);
+    } else {
+      sh = Math.floor(vw / targetAspect);
+    }
+    const sx = Math.floor((vw - sw) * 0.5);
+    const sy = Math.floor((vh - sh) * 0.5);
+
+    if (opticalClutchHeld || serverPaused) {
+      resetOpticalState(opticalState, true);
+      opticalStatusLabel.textContent = serverPaused ? 'Input Paused on PC' : 'Paused (Lifted)';
+      drawOpticalPreview(sx, sy, sw, sh, null, true);
+    } else {
+      flowCtx.drawImage(opticalVideo, sx, sy, sw, sh, 0, 0, FLOW_WIDTH, FLOW_HEIGHT);
+      const rgba = flowCtx.getImageData(0, 0, FLOW_WIDTH, FLOW_HEIGHT).data;
+      const currGray = rgbaToGrayscale(rgba, FLOW_WIDTH, FLOW_HEIGHT);
+
+      let flowRes = null;
+      if (opticalState.prevGray) {
+        flowRes = estimateOpticalShift(opticalState.prevGray, currGray, FLOW_WIDTH, FLOW_HEIGHT);
+        if (flowRes.reason === 'ok') {
+          opticalStatusLabel.textContent = 'Tracking Surface';
+          const { dx, dy } = opticalShiftToCursorDelta(flowRes, opticalState, {
+            sensitivity: settings.opticalSens,
+            invertX: settings.invertOpticalX,
+            invertY: settings.invertOpticalY,
+          });
+          if (dx !== 0 || dy !== 0) {
+            sendMove(dx, dy);
+          }
+        } else if (flowRes.reason === 'low-texture') {
+          opticalStatusLabel.textContent = 'Low Texture / Too Dark';
+          resetOpticalState(opticalState, false);
+        } else {
+          opticalStatusLabel.textContent = 'Move Slower / Hold Steady';
+          resetOpticalState(opticalState, false);
+        }
+      } else {
+        opticalStatusLabel.textContent = 'Acquiring Surface…';
+      }
+
+      opticalState.prevGray = currGray;
+      drawOpticalPreview(sx, sy, sw, sh, flowRes, false);
+    }
+  }
+
+  opticalRafId = requestAnimationFrame(opticalFrameLoop);
+}
+
+async function startOpticalCamera() {
+  requestWakeLock();
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    opticalStatusLabel.textContent = 'Camera unavailable (Requires HTTPS)';
+    return;
+  }
+
+  stopOpticalCamera();
+  opticalStatusLabel.textContent = 'Starting Camera…';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: opticalFacingMode },
+        width: { ideal: 320 },
+        height: { ideal: 240 },
+        frameRate: { ideal: 60, min: 24 },
+      },
+      audio: false,
+    });
+
+    if (currentMode !== 'optical') {
+      for (const t of stream.getTracks()) t.stop();
+      return;
+    }
+
+    opticalStream = stream;
+    opticalVideo.srcObject = stream;
+    await opticalVideo.play();
+
+    const track = stream.getVideoTracks()[0];
+    const caps = track && typeof track.getCapabilities === 'function'
+      ? track.getCapabilities()
+      : {};
+    opticalTorchSupported = Boolean(caps && caps.torch);
+    opticalTorchOn = false;
+
+    opticalPermBanner.classList.add('hidden');
+    resetOpticalState(opticalState, true);
+    updateOpticalButtons();
+    opticalRafId = requestAnimationFrame(opticalFrameLoop);
+  } catch (err) {
+    opticalPermBanner.classList.remove('hidden');
+    opticalStatusLabel.textContent = 'Camera permission denied or unavailable';
+    updateOpticalButtons();
+  }
+}
+
+btnEnableOptical.addEventListener('click', () => {
+  startOpticalCamera();
+});
+
+btnOpticalCameraFlip.addEventListener('click', () => {
+  opticalFacingMode = opticalFacingMode === 'environment' ? 'user' : 'environment';
+  updateOpticalButtons();
+  if (opticalStream) {
+    startOpticalCamera();
+  }
+});
+
+btnOpticalTorch.addEventListener('click', () => {
+  if (!opticalStream || !opticalTorchSupported) return;
+  applyTorchConstraint(!opticalTorchOn);
+});
+
+btnOpticalClutch.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  btnOpticalClutch.setPointerCapture(e.pointerId);
+  opticalClutchHeld = true;
+  resetOpticalState(opticalState, true);
+  btnOpticalClutch.classList.add('held');
+});
+
+const releaseOpticalClutch = (e) => {
+  if (opticalClutchHeld) {
+    e.preventDefault();
+    opticalClutchHeld = false;
+    btnOpticalClutch.classList.remove('held');
+    resetOpticalState(opticalState, true);
+  }
+};
+btnOpticalClutch.addEventListener('pointerup', releaseOpticalClutch);
+btnOpticalClutch.addEventListener('pointercancel', releaseOpticalClutch);
+
 // Keyboard & Modifiers
 const stickyModifiers = new Set();
 
@@ -847,10 +1138,15 @@ function syncSettingsUI() {
   rngAirSens.value = String(settings.airSens);
   valAirSens.textContent = `${settings.airSens.toFixed(1)}x`;
 
+  rngOpticalSens.value = String(settings.opticalSens);
+  valOpticalSens.textContent = `${settings.opticalSens.toFixed(1)}x`;
+
   chkNaturalScroll.checked = settings.naturalScroll;
   chkTapClick.checked = settings.tapClick;
   chkInvertAirX.checked = settings.invertAirX;
   chkInvertAirY.checked = settings.invertAirY;
+  chkInvertOpticalX.checked = settings.invertOpticalX;
+  chkInvertOpticalY.checked = settings.invertOpticalY;
   chkSoundClick.checked = settings.soundClick;
 }
 
@@ -887,6 +1183,12 @@ rngAirSens.addEventListener('input', () => {
   saveSettings(settings);
 });
 
+rngOpticalSens.addEventListener('input', () => {
+  settings.opticalSens = parseFloat(rngOpticalSens.value);
+  valOpticalSens.textContent = `${settings.opticalSens.toFixed(1)}x`;
+  saveSettings(settings);
+});
+
 chkNaturalScroll.addEventListener('change', () => {
   settings.naturalScroll = chkNaturalScroll.checked;
   saveSettings(settings);
@@ -904,6 +1206,16 @@ chkInvertAirX.addEventListener('change', () => {
 
 chkInvertAirY.addEventListener('change', () => {
   settings.invertAirY = chkInvertAirY.checked;
+  saveSettings(settings);
+});
+
+chkInvertOpticalX.addEventListener('change', () => {
+  settings.invertOpticalX = chkInvertOpticalX.checked;
+  saveSettings(settings);
+});
+
+chkInvertOpticalY.addEventListener('change', () => {
+  settings.invertOpticalY = chkInvertOpticalY.checked;
   saveSettings(settings);
 });
 

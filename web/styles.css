@@ -102,10 +102,11 @@ html, body {
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
-  padding: 6px 11px;
+  padding: 6px 9px;
   border-radius: 999px;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -406,6 +407,66 @@ html, body {
   font-size: 12px;
   color: rgba(139, 152, 174, 0.78);
   text-align: center;
+}
+
+.hidden-video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.optical-telemetry {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.optical-preview-wrap {
+  padding: 4px;
+  border-radius: 14px;
+  background: #0b0f17;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.45);
+}
+
+.optical-preview {
+  display: block;
+  width: 160px;
+  height: 120px;
+  border-radius: 10px;
+  background: #090d14;
+}
+
+.optical-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.chip-btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #93c5fd;
+}
+
+.chip-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .air-clutch-pad {
