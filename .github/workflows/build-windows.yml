@@ -33,16 +33,17 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target/release/airpad.exe dist/airpad.exe
+          Copy-Item launch-airmouse.bat dist/launch-airmouse.bat
           Copy-Item launch-airpad.bat dist/launch-airpad.bat
           Copy-Item README.md dist/README.md
-          Compress-Archive -Path dist/* -DestinationPath airpad-windows-x86_64.zip -Force
+          Compress-Archive -Path dist/* -DestinationPath airmouse-windows-x86_64.zip -Force
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: airpad-windows-x86_64
+          name: airmouse-windows-x86_64
           path: |
             target/release/airpad.exe
-            airpad-windows-x86_64.zip
+            airmouse-windows-x86_64.zip
       - name: Publish GitHub Release on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -50,4 +51,4 @@ jobs:
           generate_release_notes: true
           files: |
             target/release/airpad.exe
-            airpad-windows-x86_64.zip
+            airmouse-windows-x86_64.zip

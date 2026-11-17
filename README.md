@@ -24,18 +24,18 @@ AirPad turns your iPhone into a low-latency Wi-Fi wireless trackpad, remote keyb
 ## Running on Windows 10/11
 
 ### Option 1: Prebuilt Release
-Download `airpad-windows-x86_64.zip` from **GitHub Releases**, extract it, and double-click `launch-airpad.bat` (or `airpad.exe`).
+Download `airmouse-windows-x86_64.zip` from **GitHub Releases**, extract it, and double-click `launch-airmouse.bat` (or `airpad.exe`).
 
 ### Option 2: Build from Source
 1. Install [Rust](https://rustup.rs/) (MSVC toolchain).
-2. Double-click `launch-airpad.bat`, or build manually:
+2. Double-click `launch-airmouse.bat` (it will auto-compile if the binary isn't built yet), or build manually:
    ```powershell
    cargo build --release
    .\target\release\airpad.exe
    ```
    Or run headless in a terminal (prints ASCII QR codes):
    ```powershell
-   .\launch-airpad.bat --headless
+   .\launch-airmouse.bat --headless
    ```
 
 ## First-Time iPhone Setup
