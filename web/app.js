@@ -1,3 +1,11 @@
+import {
+  computeAirDelta,
+  createAirState,
+  detectIOS,
+  resetAirMotion,
+  updateGravityUp,
+} from './air-kinematics.js';
+
 const OP = {
   MOVE: 0x01,
   MOUSE_BTN: 0x02,
@@ -22,6 +30,7 @@ const defaultSettings = {
   airSens: 1.2,
   naturalScroll: true,
   tapClick: true,
+  invertAirX: false,
   invertAirY: false,
   soundClick: false,
 };
@@ -105,6 +114,7 @@ const rngAirSens = document.getElementById('rngAirSens');
 const valAirSens = document.getElementById('valAirSens');
 const chkNaturalScroll = document.getElementById('chkNaturalScroll');
 const chkTapClick = document.getElementById('chkTapClick');
+const chkInvertAirX = document.getElementById('chkInvertAirX');
 const chkInvertAirY = document.getElementById('chkInvertAirY');
 const chkSoundClick = document.getElementById('chkSoundClick');
 const btnReleaseAll = document.getElementById('btnReleaseAll');
@@ -368,6 +378,8 @@ function setMode(mode) {
   airPanel.classList.toggle('hidden', isTrackpad);
 
   sendReleaseAll();
+  lastMotionTs = 0;
+  resetAirMotion(airState, !isTrackpad);
   if (!isTrackpad) {
     setupMotionSensors();
   }
@@ -588,6 +600,8 @@ for (const btnEl of document.querySelectorAll('.mouse-btn')) {
 }
 
 // Mid-Air Gyroscope Mode
+const isIOSDevice = detectIOS();
+const airState = createAirState();
 let motionPermissionGranted = false;
 let motionListenerAttached = false;
 let airClutchHeld = false;
@@ -602,8 +616,8 @@ function updateAirVisual(paused, dx = 0, dy = 0) {
     airDotX *= 0.6;
     airDotY *= 0.6;
   } else {
-    airDotX = Math.max(-44, Math.min(44, airDotX * 0.85 + dx * 0.7));
-    airDotY = Math.max(-44, Math.min(44, airDotY * 0.85 + dy * 0.7));
+    airDotX = Math.max(-44, Math.min(44, airDotX * 0.72 + dx * 1.1));
+    airDotY = Math.max(-44, Math.min(44, airDotY * 0.72 + dy * 1.1));
   }
   airDot.style.transform = `translate(${airDotX.toFixed(1)}px, ${airDotY.toFixed(1)}px)`;
 }
@@ -620,30 +634,25 @@ function onDeviceMotion(event) {
   lastMotionTs = now;
 
   if (airClutchHeld) {
+    // Track wrist posture while clutching so release starts aligned to the new grip
+    updateGravityUp(airState, event.accelerationIncludingGravity, isIOSDevice);
+    resetAirMotion(airState, false);
     updateAirVisual(true);
     return;
   }
 
-  const alpha = rr.alpha || 0;
-  const beta = rr.beta || 0;
-  const gamma = rr.gamma || 0;
-
-  // Natural portrait grip (~35° tilt): wrist yaw blends gamma + alpha; pitch uses beta
-  let yawRate = -(gamma * 0.72 + alpha * 0.55);
-  let pitchRate = -beta;
-
-  // Deadzone to reject micro hand tremor
-  const deadzone = 1.4;
-  if (Math.abs(yawRate) < deadzone) yawRate = 0;
-  if (Math.abs(pitchRate) < deadzone) pitchRate = 0;
-
-  if (settings.invertAirY) {
-    pitchRate = -pitchRate;
-  }
-
-  const gain = settings.airSens * 16.5 * dt;
-  const dx = yawRate * gain;
-  const dy = pitchRate * gain;
+  const { dx, dy } = computeAirDelta(
+    rr,
+    event.accelerationIncludingGravity,
+    dt,
+    airState,
+    {
+      sensitivity: settings.airSens,
+      invertX: settings.invertAirX,
+      invertY: settings.invertAirY,
+      isIOS: isIOSDevice,
+    },
+  );
 
   if (dx !== 0 || dy !== 0) {
     sendMove(dx, dy);
@@ -699,6 +708,7 @@ btnAirClutch.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   btnAirClutch.setPointerCapture(e.pointerId);
   airClutchHeld = true;
+  resetAirMotion(airState, false);
   btnAirClutch.classList.add('held');
   updateAirVisual(true);
 });
@@ -708,6 +718,7 @@ const releaseClutch = (e) => {
     e.preventDefault();
     airClutchHeld = false;
     btnAirClutch.classList.remove('held');
+    resetAirMotion(airState, false);
     lastMotionTs = performance.now();
     updateAirVisual(false);
   }
@@ -838,6 +849,7 @@ function syncSettingsUI() {
 
   chkNaturalScroll.checked = settings.naturalScroll;
   chkTapClick.checked = settings.tapClick;
+  chkInvertAirX.checked = settings.invertAirX;
   chkInvertAirY.checked = settings.invertAirY;
   chkSoundClick.checked = settings.soundClick;
 }
@@ -882,6 +894,11 @@ chkNaturalScroll.addEventListener('change', () => {
 
 chkTapClick.addEventListener('change', () => {
   settings.tapClick = chkTapClick.checked;
+  saveSettings(settings);
+});
+
+chkInvertAirX.addEventListener('change', () => {
+  settings.invertAirX = chkInvertAirX.checked;
   saveSettings(settings);
 });
 

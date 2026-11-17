@@ -1,6 +1,6 @@
 [package]
 name = "airpad"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 description = "Turn an iPhone into a low-latency Wi-Fi wireless trackpad, keyboard, and gyroscope air-mouse for Windows 10/11"
 license = "MIT"

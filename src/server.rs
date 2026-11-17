@@ -550,6 +550,14 @@ mod tests {
         let body = index_res.text().await.unwrap();
         assert!(body.contains("AirPad"));
 
+        let kin_res = client
+            .get(format!("http://{web_addr}/air-kinematics.js"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(kin_res.status(), 200);
+        assert!(kin_res.text().await.unwrap().contains("computeAirDelta"));
+
         let mc_res = client
             .get(format!("http://{http_addr}/ca.mobileconfig"))
             .send()
