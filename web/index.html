@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0b0f17" />
+  <title>AirPad</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="status-pill" id="statusPill" data-state="connecting">
+        <span class="status-dot"></span>
+        <span id="statusText">Connecting…</span>
+        <span id="latencyText" class="latency-badge"></span>
+      </div>
+
+      <div class="mode-tabs" role="tablist" aria-label="Pointer Mode">
+        <button id="btnModeTrackpad" class="mode-tab active" type="button" role="tab" aria-selected="true">Trackpad</button>
+        <button id="btnModeAir" class="mode-tab" type="button" role="tab" aria-selected="false">Air-Mouse</button>
+      </div>
+
+      <div class="top-actions">
+        <button id="btnKeyboard" class="icon-btn" type="button" title="Toggle Keyboard" aria-label="Toggle Keyboard">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="5" width="20" height="14" rx="2"/>
+            <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M7 16h10"/>
+          </svg>
+        </button>
+        <button id="btnSettings" class="icon-btn" type="button" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.41 1.13H21a2 2 0 1 1 0 4h-.09c-.64.11-1.15.53-1.51 1.13z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Collapsible Keyboard Shortcut Strip -->
+    <section id="keyboardBar" class="keyboard-bar hidden" aria-label="Keyboard Controls">
+      <div class="kbd-row">
+        <button class="kbd-key mod-key" data-mod="17" type="button">Ctrl</button>
+        <button class="kbd-key mod-key" data-mod="18" type="button">Alt</button>
+        <button class="kbd-key mod-key" data-mod="91" type="button">Win</button>
+        <button class="kbd-key mod-key" data-mod="16" type="button">Shift</button>
+        <button class="kbd-key" data-vk="27" type="button">Esc</button>
+        <button class="kbd-key" data-vk="9" type="button">Tab</button>
+        <button class="kbd-key" data-vk="46" type="button">Del</button>
+      </div>
+      <div class="kbd-row">
+        <button class="kbd-key" data-vk="37" type="button">◀</button>
+        <button class="kbd-key" data-vk="38" type="button">▲</button>
+        <button class="kbd-key" data-vk="40" type="button">▼</button>
+        <button class="kbd-key" data-vk="39" type="button">▶</button>
+        <button class="kbd-key" data-vk="8" type="button">⌫</button>
+        <button class="kbd-key wide" data-vk="13" type="button">Enter</button>
+        <button id="btnFocusInput" class="kbd-key accent" type="button">Type</button>
+      </div>
+      <!-- Real input element for iOS soft keyboard -->
+      <input
+        id="hiddenTextInput"
+        class="hidden-text-input"
+        type="text"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="Tap to type on PC…"
+      />
+    </section>
+
+    <!-- Main Pointer Surface -->
+    <main class="main-stage">
+      <!-- Trackpad Panel -->
+      <section id="trackpadPanel" class="surface-panel active">
+        <div id="trackpadSurface" class="trackpad-surface">
+          <div class="trackpad-grid"></div>
+          <div id="touchRipples" class="touch-ripples"></div>
+          <div class="gesture-hints" id="gestureHints">
+            <div class="hint-title">Trackpad Ready</div>
+            <div class="hint-sub">1-finger move/tap · Double-tap hold to drag · 2-finger scroll/tap/pinch · 3-finger middle click</div>
+          </div>
+          <div id="dragBadge" class="drag-badge hidden">Dragging</div>
+        </div>
+      </section>
+
+      <!-- Air-Mouse Panel -->
+      <section id="airPanel" class="surface-panel hidden">
+        <div class="air-container">
+          <div id="motionPermBanner" class="motion-banner hidden">
+            <p class="motion-banner-title">Motion Sensor Access Needed</p>
+            <p class="motion-banner-desc">iOS Safari requires your permission to read the gyroscope for mid-air pointing.</p>
+            <button id="btnEnableMotion" class="primary-btn" type="button">Enable Gyroscope</button>
+          </div>
+
+          <div class="air-telemetry">
+            <div class="air-crosshair" id="airCrosshair">
+              <div class="crosshair-ring"></div>
+              <div class="crosshair-dot" id="airDot"></div>
+            </div>
+            <div id="airStatusLabel" class="air-status-label">Aiming Active</div>
+          </div>
+
+          <button id="btnAirClutch" class="air-clutch-pad" type="button">
+            <span class="clutch-title">HOLD TO PAUSE</span>
+            <span class="clutch-sub">Freeze cursor while re-centering wrist</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Pause Overlay -->
+      <div id="pausedOverlay" class="paused-overlay hidden">
+        <div class="paused-card">
+          <div class="paused-title">Input Paused on PC</div>
+          <div class="paused-sub">Resume from the AirPad tray or popup window on Windows.</div>
+        </div>
+      </div>
+
+      <!-- Auth / Disconnected Overlay -->
+      <div id="authOverlay" class="paused-overlay hidden">
+        <div class="paused-card">
+          <div class="paused-title" id="authErrorTitle">Connection Rejected</div>
+          <div class="paused-sub" id="authErrorSub">Scan the QR code from AirPad on your PC to connect with a valid token.</div>
+          <button id="btnRetryConnect" class="primary-btn" type="button">Retry Connection</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Physical Mouse Buttons -->
+    <footer class="mouse-buttons">
+      <button id="btnLeftClick" class="mouse-btn left" data-btn="0" type="button">Left</button>
+      <button id="btnMiddleClick" class="mouse-btn middle" data-btn="2" type="button">Mid</button>
+      <button id="btnRightClick" class="mouse-btn right" data-btn="1" type="button">Right</button>
+    </footer>
+
+    <!-- Settings Drawer -->
+    <div id="settingsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Settings">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <h2>AirPad Settings</h2>
+          <button id="btnCloseSettings" class="icon-btn" type="button" aria-label="Close Settings">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="setting-row">
+            <div class="setting-label">
+              <span>Trackpad Sensitivity</span>
+              <span id="valTrackpadSens">1.3x</span>
+            </div>
+            <input id="rngTrackpadSens" type="range" min="0.4" max="3.0" step="0.1" value="1.3" />
+          </label>
+
+          <label class="setting-row">
+            <div class="setting-label">
+              <span>Scroll Speed</span>
+              <span id="valScrollSpeed">1.0x</span>
+            </div>
+            <input id="rngScrollSpeed" type="range" min="0.3" max="3.0" step="0.1" value="1.0" />
+          </label>
+
+          <label class="setting-row">
+            <div class="setting-label">
+              <span>Air-Mouse Sensitivity</span>
+              <span id="valAirSens">1.2x</span>
+            </div>
+            <input id="rngAirSens" type="range" min="0.4" max="3.0" step="0.1" value="1.2" />
+          </label>
+
+          <label class="setting-toggle">
+            <span>Natural Scrolling</span>
+            <input id="chkNaturalScroll" type="checkbox" checked />
+          </label>
+
+          <label class="setting-toggle">
+            <span>Tap-to-Click</span>
+            <input id="chkTapClick" type="checkbox" checked />
+          </label>
+
+          <label class="setting-toggle">
+            <span>Invert Air-Mouse Y Axis</span>
+            <input id="chkInvertAirY" type="checkbox" />
+          </label>
+
+          <label class="setting-toggle">
+            <span>Subtle Click Sound</span>
+            <input id="chkSoundClick" type="checkbox" />
+          </label>
+
+          <div class="setting-actions">
+            <button id="btnReleaseAll" class="secondary-btn" type="button">Release Stuck Keys/Buttons</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

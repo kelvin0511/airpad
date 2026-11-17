@@ -1,0 +1,17 @@
+{
+  "name": "AirPad Wireless Trackpad",
+  "short_name": "AirPad",
+  "description": "Low-latency Wi-Fi trackpad, keyboard, and gyroscope air-mouse for Windows PC",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
